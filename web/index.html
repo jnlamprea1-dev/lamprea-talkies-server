@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#121212">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.json">
 <title>Lamprea Talkies</title>
 <style>
@@ -20,7 +21,7 @@ h1{font-size:26px;margin-bottom:4px;text-align:center}
 .btn-join{width:100%;max-width:400px;padding:12px;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;color:#fff;margin:12px 0;transition:background .2s}
 .btn-join.blue{background:#1A73E8}
 .btn-join.green{background:#34A853}
-.btn-ptt{width:200px;height:200px;border-radius:50%;border:none;font-size:17px;font-weight:700;color:#fff;cursor:pointer;margin:12px 0;transition:all .15s;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none}
+.btn-ptt{width:200px;height:200px;border-radius:50%;border:none;font-size:17px;font-weight:700;color:#fff;cursor:pointer;margin:12px 0;transition:all .15s;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 .btn-ptt.idle{background:#1A73E8}
 .btn-ptt.active{background:#34A853}
 .btn-ptt.transmitting{background:#EA4335}
@@ -47,7 +48,7 @@ h1{font-size:26px;margin-bottom:4px;text-align:center}
 .modal-btns .primary{background:#1A73E8}
 .modal-btns .cancel{background:#5F6368}
 .add-channel-btn{width:100%;padding:10px;border:1px dashed #5F6368;border-radius:8px;background:transparent;color:#9AA0A6;font-size:14px;cursor:pointer;margin-top:12px}
-.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;z-index:200;opacity:0;transition:opacity .3s}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;z-index:200;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.show{opacity:1}
 </style>
 </head>
@@ -66,12 +67,12 @@ h1{font-size:26px;margin-bottom:4px;text-align:center}
 <label>Canal</label>
 <select id="channelSelect"></select>
 </div>
-<button class="btn-manage" onclick="showManage()" title="Gestionar canales">⚙</button>
+<button class="btn-manage" onclick="showManage()" title="Gestionar canales">&#9881;</button>
 </div>
 
 <button class="btn-join blue" id="btnJoin" onclick="toggleJoin()">Unirse al Canal</button>
 
-<button class="btn-ptt idle" id="btnPTT">Mantener para hablar</button>
+<button class="btn-ptt idle" id="btnPTT" disabled>Mantener para hablar</button>
 
 <div class="hands-free-row">
 <div class="switch" id="switchHF" onclick="toggleHandsFree()"></div>
@@ -95,53 +96,52 @@ h1{font-size:26px;margin-bottom:4px;text-align:center}
 <div class="toast" id="toast"></div>
 
 <script>
-const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
-let ws = null;
-let connected = false;
-let joined = false;
-let transmitting = false;
-let handsFree = false;
-let currentChannel = 'general';
-let channels = ['general'];
-let audioCtx = null;
-let sourceNode = null;
-let processorNode = null;
-let stream = null;
-let audioSeq = 0;
-let pttDown = false;
+var WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
+var ws = null;
+var connected = false;
+var joined = false;
+var transmitting = false;
+var handsFree = false;
+var currentChannel = 'general';
+var channels = ['general'];
+var audioSeq = 0;
+var pttDown = false;
 
-const $ = id => document.getElementById(id);
-const statusEl = $('status');
-const btnJoin = $('btnJoin');
-const btnPTT = $('btnPTT');
-const channelSelect = $('channelSelect');
-const usernameInput = $('username');
-const usersEl = $('users');
-const toastEl = $('toast');
+var playCtx = null;
+var recCtx = null;
+var recStream = null;
+var recSource = null;
+var recProcessor = null;
 
-const savedChannels = localStorage.getItem('channels');
-if (savedChannels) {
-channels = JSON.parse(savedChannels);
-}
+var $ = function(id) { return document.getElementById(id); };
+var statusEl = $('status');
+var btnJoin = $('btnJoin');
+var btnPTT = $('btnPTT');
+var channelSelect = $('channelSelect');
+var usernameInput = $('username');
+var usersEl = $('users');
+var toastEl = $('toast');
 
-let toastTimeout;
+var saved = localStorage.getItem('channels');
+if (saved) channels = JSON.parse(saved);
 
+var toastTimeout;
 function showToast(msg) {
 toastEl.textContent = msg;
 toastEl.classList.add('show');
 clearTimeout(toastTimeout);
-toastTimeout = setTimeout(() => toastEl.classList.remove('show'), 2500);
+toastTimeout = setTimeout(function() { toastEl.classList.remove('show'); }, 2500);
 }
 
 function renderChannels() {
 channelSelect.innerHTML = '';
-channels.forEach(c => {
-const opt = document.createElement('option');
+channels.forEach(function(c) {
+var opt = document.createElement('option');
 opt.value = c;
 opt.textContent = c;
 channelSelect.appendChild(opt);
 });
-if (channels.includes(currentChannel)) channelSelect.value = currentChannel;
+if (channels.indexOf(currentChannel) >= 0) channelSelect.value = currentChannel;
 else channelSelect.value = channels[0];
 currentChannel = channelSelect.value;
 }
@@ -152,19 +152,23 @@ localStorage.setItem('channels', JSON.stringify(channels));
 
 renderChannels();
 
-channelSelect.addEventListener('change', () => {
+channelSelect.addEventListener('change', function() {
 currentChannel = channelSelect.value;
 });
 
+function sendJSON(obj) {
+if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
 function connect() {
-if (ws) ws.close();
+if (ws) try { ws.close(); } catch(e) {}
 ws = new WebSocket(WS_URL);
-ws.onopen = () => {
+ws.onopen = function() {
 if (joined) sendJoin();
 };
-ws.onmessage = (e) => {
+ws.onmessage = function(e) {
 try {
-const msg = JSON.parse(e.data);
+var msg = JSON.parse(e.data);
 switch (msg.type) {
 case 'connected':
 connected = true;
@@ -173,21 +177,19 @@ statusEl.style.color = '#34A853';
 btnJoin.textContent = 'Salir del Canal';
 btnJoin.className = 'btn-join green';
 btnPTT.disabled = false;
+btnPTT.className = 'btn-ptt idle';
+updatePTTLabel();
 break;
 case 'users_update':
 renderUsers(msg.users);
 break;
-case 'audio_start':
-break;
 case 'audio_data':
 playAudio(msg.audio);
 break;
-case 'audio_end':
-break;
 }
-} catch (err) {}
+} catch(e) {}
 };
-ws.onclose = () => {
+ws.onclose = function() {
 connected = false;
 if (joined) {
 joined = false;
@@ -202,11 +204,6 @@ transmitting = false;
 usersEl.innerHTML = '';
 }
 };
-ws.onerror = () => {};
-}
-
-function sendJSON(obj) {
-if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 
 function sendJoin() {
@@ -216,8 +213,7 @@ sendJSON({ type: 'join', channel: currentChannel, username: usernameInput.value.
 function toggleJoin() {
 if (joined) {
 sendJSON({ type: 'leave_channel', channel: currentChannel });
-joined = false;
-connected = false;
+joined = false; connected = false;
 statusEl.textContent = 'Desconectado';
 statusEl.style.color = '#9AA0A6';
 btnJoin.textContent = 'Unirse al Canal';
@@ -227,10 +223,14 @@ btnPTT.className = 'btn-ptt idle';
 btnPTT.textContent = 'Mantener para hablar';
 transmitting = false;
 usersEl.innerHTML = '';
-if (ws) ws.close();
+if (ws) try { ws.close(); } catch(e) {}
 } else {
+var AudioCtx = window.AudioContext || window.webkitAudioContext;
+if (!playCtx) { playCtx = new AudioCtx(); }
+if (playCtx.state === 'suspended') playCtx.resume();
+
 currentChannel = channelSelect.value;
-if (!channels.includes(currentChannel)) {
+if (channels.indexOf(currentChannel) < 0) {
 channels.push(currentChannel);
 saveChannels();
 renderChannels();
@@ -242,144 +242,117 @@ connect();
 
 function renderUsers(users) {
 usersEl.innerHTML = '';
-(users || []).forEach(u => {
-const div = document.createElement('div');
+(users || []).forEach(function(u) {
+var div = document.createElement('div');
 div.className = 'user-item';
-div.innerHTML = `<span class="name">${u.username || 'Unknown'}</span><span class="status">Online</span>`;
+div.innerHTML = '<span class="name">' + (u.username || 'Unknown') + '</span><span class="status">Online</span>';
 usersEl.appendChild(div);
 });
 }
 
-async function startPTT() {
+function startPTT() {
 if (transmitting || !joined) return;
 transmitting = true;
 audioSeq = 0;
 
-try {
-audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-sourceNode = audioCtx.createMediaStreamSource(stream);
+var AudioCtx = window.AudioContext || window.webkitAudioContext;
+if (!recCtx) recCtx = new AudioCtx({ sampleRate: 16000 });
+if (recCtx.state === 'suspended') recCtx.resume();
 
-const sampleRate = audioCtx.sampleRate;
-const targetRate = 16000;
-const bufferSize = 4096;
-
-processorNode = audioCtx.createScriptProcessor(bufferSize, 1, 1);
-sourceNode.connect(processorNode);
-processorNode.connect(audioCtx.destination);
+navigator.mediaDevices.getUserMedia({ audio: true }).then(function(s) {
+recStream = s;
+var sampleRate = recCtx.sampleRate;
+recSource = recCtx.createMediaStreamSource(s);
+recProcessor = recCtx.createScriptProcessor(4096, 1, 1);
+recSource.connect(recProcessor);
+recProcessor.connect(recCtx.destination);
 
 sendJSON({ type: 'audio_start', channel: currentChannel });
 btnPTT.className = 'btn-ptt transmitting';
 btnPTT.textContent = 'Transmitiendo...';
 
-processorNode.onaudioprocess = (event) => {
+recProcessor.onaudioprocess = function(event) {
 if (!transmitting) return;
-const input = event.inputBuffer.getChannelData(0);
-let samples = input;
+var input = event.inputBuffer.getChannelData(0);
+var samples = input;
 
-if (sampleRate !== targetRate) {
-const ratio = targetRate / sampleRate;
-const newLen = Math.floor(samples.length * ratio);
-const resampled = new Float32Array(newLen);
-for (let i = 0; i < newLen; i++) {
-const pos = i / ratio;
-const idx = Math.floor(pos);
-const frac = pos - idx;
-resampled[i] = idx + 1 < samples.length
-? samples[idx] * (1 - frac) + samples[idx + 1] * frac
-: samples[idx];
+if (sampleRate !== 16000) {
+var ratio = 16000 / sampleRate;
+var newLen = Math.floor(samples.length * ratio);
+var resampled = new Float32Array(newLen);
+for (var i = 0; i < newLen; i++) {
+var pos = i / ratio;
+var idx = Math.floor(pos);
+var frac = pos - idx;
+resampled[i] = (idx + 1 < samples.length) ? samples[idx] * (1 - frac) + samples[idx + 1] * frac : samples[idx];
 }
 samples = resampled;
 }
 
-const pcm = new Int16Array(samples.length);
-for (let i = 0; i < samples.length; i++) {
-const s = Math.max(-1, Math.min(1, samples[i]));
+var pcm = new Int16Array(samples.length);
+for (var i = 0; i < samples.length; i++) {
+var s = Math.max(-1, Math.min(1, samples[i]));
 pcm[i] = s < 0 ? s * 32768 : s * 32767;
 }
 
-const bytes = new Uint8Array(pcm.buffer);
-let binary = '';
-for (let i = 0; i < bytes.length; i++) {
-binary += String.fromCharCode(bytes[i]);
-}
-const base64 = btoa(binary);
-
-sendJSON({ type: 'audio_data', channel: currentChannel, audio: base64, seq: audioSeq++ });
+var bytes = new Uint8Array(pcm.buffer);
+var binary = '';
+for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+sendJSON({ type: 'audio_data', channel: currentChannel, audio: btoa(binary), seq: audioSeq++ });
 };
-} catch (err) {
-showToast('Error al acceder al micrófono: ' + err.message);
+}).catch(function(err) {
+showToast('Error de micrófono: ' + err.message);
 transmitting = false;
-}
+});
 }
 
 function stopPTT() {
 if (!transmitting) return;
 transmitting = false;
 
-if (processorNode) {
-try { processorNode.disconnect(); } catch(e) {}
-processorNode = null;
-}
-if (sourceNode) {
-try { sourceNode.disconnect(); } catch(e) {}
-sourceNode = null;
-}
-if (stream) {
-stream.getTracks().forEach(t => t.stop());
-stream = null;
-}
-if (audioCtx) {
-audioCtx.close().catch(() => {});
-audioCtx = null;
-}
+if (recProcessor) { try { recProcessor.disconnect(); } catch(e) {} recProcessor = null; }
+if (recSource) { try { recSource.disconnect(); } catch(e) {} recSource = null; }
+if (recStream) { recStream.getTracks().forEach(function(t) { t.stop(); }); recStream = null; }
 
 sendJSON({ type: 'audio_end', channel: currentChannel });
-btnPTT.className = handsFree ? 'btn-ptt idle' : 'btn-ptt idle';
+btnPTT.className = 'btn-ptt idle';
+updatePTTLabel();
+}
+
+function updatePTTLabel() {
 btnPTT.textContent = handsFree ? 'Tocar para hablar' : 'Mantener para hablar';
 }
 
-btnPTT.addEventListener('pointerdown', (e) => {
+function handlePTTDown(e) {
 e.preventDefault();
 if (!joined || !connected) return;
 if (handsFree) {
-if (transmitting) stopPTT();
-else startPTT();
+if (transmitting) stopPTT(); else startPTT();
 } else {
 pttDown = true;
 startPTT();
 }
-});
+}
 
-btnPTT.addEventListener('pointerup', (e) => {
+function handlePTTUp(e) {
 e.preventDefault();
-if (!handsFree && pttDown) {
-pttDown = false;
-stopPTT();
+if (!handsFree && pttDown) { pttDown = false; stopPTT(); }
 }
-});
 
-btnPTT.addEventListener('pointerleave', (e) => {
-if (!handsFree && pttDown) {
-pttDown = false;
-stopPTT();
-}
-});
+btnPTT.addEventListener('pointerdown', handlePTTDown);
+btnPTT.addEventListener('pointerup', handlePTTUp);
+btnPTT.addEventListener('pointerleave', function(e) { if (!handsFree && pttDown) { pttDown = false; stopPTT(); } });
+btnPTT.addEventListener('touchstart', function(e) { e.preventDefault(); }, { passive: false });
 
 function toggleHandsFree() {
 handsFree = !handsFree;
 $('switchHF').classList.toggle('on', handsFree);
-if (handsFree && !transmitting) {
-btnPTT.textContent = 'Tocar para hablar';
-btnPTT.className = 'btn-ptt idle';
-} else if (!handsFree && !transmitting) {
-btnPTT.textContent = 'Mantener para hablar';
-btnPTT.className = 'btn-ptt idle';
-}
+updatePTTLabel();
+if (!transmitting) btnPTT.className = 'btn-ptt idle';
 }
 
-let audioQueue = [];
-let isPlaying = false;
+var audioQueue = [];
+var isPlaying = false;
 
 function playAudio(base64) {
 audioQueue.push(base64);
@@ -389,51 +362,46 @@ if (!isPlaying) processAudioQueue();
 function processAudioQueue() {
 if (audioQueue.length === 0) { isPlaying = false; return; }
 isPlaying = true;
-const base64 = audioQueue.shift();
+var b64 = audioQueue.shift();
 
 try {
-const binary = atob(base64);
-const bytes = new Uint8Array(binary.length);
-for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-const pcm = new Int16Array(bytes.buffer);
-const float32 = new Float32Array(pcm.length);
-for (let i = 0; i < pcm.length; i++) float32[i] = pcm[i] / 32768;
+var binary = atob(b64);
+var bytes = new Uint8Array(binary.length);
+for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+var pcm = new Int16Array(bytes.buffer);
+var float32 = new Float32Array(pcm.length);
+for (var i = 0; i < pcm.length; i++) float32[i] = pcm[i] / 32768;
 
-const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, float32.length, 16000);
-const buffer = ctx.createBuffer(1, float32.length, 16000);
+var AudioCtx = window.AudioContext || window.webkitAudioContext;
+if (!playCtx) playCtx = new AudioCtx();
+if (playCtx.state === 'suspended') playCtx.resume();
+
+var buffer = playCtx.createBuffer(1, float32.length, 16000);
 buffer.getChannelData(0).set(float32);
-const src = ctx.createBufferSource();
-src.buffer = buffer;
-src.connect(ctx.destination);
-ctx.startRendering().then(rendered => {
-const playCtx = new (window.AudioContext || window.webkitAudioContext)();
-const buf = playCtx.createBuffer(1, rendered.length, 16000);
-buf.getChannelData(0).set(rendered.getChannelData(0));
-const s = playCtx.createBufferSource();
-s.buffer = buf;
-s.connect(playCtx.destination);
-s.onended = () => { playCtx.close(); processAudioQueue(); };
-s.start();
-}).catch(() => processAudioQueue());
-} catch (e) {
+var source = playCtx.createBufferSource();
+source.buffer = buffer;
+source.connect(playCtx.destination);
+source.onended = function() { processAudioQueue(); };
+source.start();
+} catch(e) {
 processAudioQueue();
 }
 }
 
 function showManage() {
-$('channelList').innerHTML = '';
-channels.forEach((c, i) => {
-const div = document.createElement('div');
+var list = $('channelList');
+list.innerHTML = '';
+channels.forEach(function(c, i) {
+var div = document.createElement('div');
 div.className = 'channel-item';
-const cb = document.createElement('input');
+var cb = document.createElement('input');
 cb.type = 'checkbox';
 cb.checked = true;
 cb.dataset.index = i;
-const label = document.createElement('label');
+var label = document.createElement('label');
 label.textContent = c;
-div.appendChild(cb);
-div.appendChild(label);
-$('channelList').appendChild(div);
+div.appendChild(cb); div.appendChild(label);
+list.appendChild(div);
 });
 $('modalManage').classList.add('show');
 }
@@ -444,32 +412,28 @@ renderChannels();
 }
 
 function deleteSelected() {
-const checks = $('channelList').querySelectorAll('input[type=checkbox]');
-const toRemove = [];
-checks.forEach(cb => {
-if (!cb.checked) {
-toRemove.push(channels[parseInt(cb.dataset.index)]);
-}
-});
-if (toRemove.includes('general')) {
+var checks = $('channelList').querySelectorAll('input[type=checkbox]');
+var toRemove = [];
+checks.forEach(function(cb) { if (!cb.checked) toRemove.push(channels[parseInt(cb.dataset.index)]); });
+if (toRemove.indexOf('general') >= 0) {
 showToast('No puedes eliminar el canal general');
 toRemove.splice(toRemove.indexOf('general'), 1);
 }
-channels = channels.filter(c => !toRemove.includes(c));
+channels = channels.filter(function(c) { return toRemove.indexOf(c) < 0; });
 if (channels.length === 0) channels = ['general'];
 saveChannels();
 closeManage();
 }
 
 function addChannel() {
-const name = prompt('Nombre del nuevo canal:');
-if (name && name.trim() && !channels.includes(name.trim())) {
+var name = prompt('Nombre del nuevo canal:');
+if (name && name.trim() && channels.indexOf(name.trim()) < 0) {
 channels.push(name.trim());
 saveChannels();
 renderChannels();
 channelSelect.value = name.trim();
 currentChannel = name.trim();
-} else if (name && channels.includes(name.trim())) {
+} else if (name && channels.indexOf(name.trim()) >= 0) {
 showToast('El canal ya existe');
 }
 closeManage();
@@ -479,4 +443,5 @@ btnPTT.disabled = true;
 </script>
 </body>
 </html>
+
 Derechos reservados: <a href="https://www.lampreamutisproducciones.com" target="_blank" rel="noopener noreferrer" style="color: #00d2ff; text-decoration: none;">Visitar Lamprea Mutis Producciones</a> - Colombia -
