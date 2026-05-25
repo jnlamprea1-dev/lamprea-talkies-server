@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const cors = require("cors");
+const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 
 const config = require("./config");
@@ -14,6 +15,7 @@ const wss = new WebSocketServer({ server });
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "../web")));
 
 initFCM();
 
