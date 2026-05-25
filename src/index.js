@@ -195,4 +195,4 @@ wss.on("connection", (ws) => {
 server.listen(config.port, "0.0.0.0", () => {
   console.log(`Lamprea Talkies server running on port ${config.port}`);
 });
-Add index.js
+
