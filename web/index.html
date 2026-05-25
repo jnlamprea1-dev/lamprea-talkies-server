@@ -265,7 +265,10 @@ var sampleRate = recCtx.sampleRate;
 recSource = recCtx.createMediaStreamSource(s);
 recProcessor = recCtx.createScriptProcessor(4096, 1, 1);
 recSource.connect(recProcessor);
-recProcessor.connect(recCtx.destination);
+var muteGain = recCtx.createGain();
+muteGain.gain.value = 0;
+recProcessor.connect(muteGain);
+muteGain.connect(recCtx.destination);
 
 sendJSON({ type: 'audio_start', channel: currentChannel });
 btnPTT.className = 'btn-ptt transmitting';
@@ -443,5 +446,4 @@ btnPTT.disabled = true;
 </script>
 </body>
 </html>
-
 Derechos reservados: <a href="https://www.lampreamutisproducciones.com" target="_blank" rel="noopener noreferrer" style="color: #00d2ff; text-decoration: none;">Visitar Lamprea Mutis Producciones</a> - Colombia -
