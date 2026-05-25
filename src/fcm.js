@@ -1,10 +1,16 @@
-const admin = require("firebase-admin");
 const config = require("./config");
 
+let admin = null;
 let fcmInitialized = false;
 
+try {
+  admin = require("firebase-admin");
+} catch (e) {
+  console.log("firebase-admin not available — push notifications disabled");
+}
+
 function initFCM() {
-  if (!config.firebase.projectId) {
+  if (!admin || !config.firebase.projectId) {
     console.log("FCM not configured — push notifications disabled");
     return;
   }
