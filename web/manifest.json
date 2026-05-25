@@ -1,0 +1,10 @@
+{
+  "name": "Lamprea Talkies",
+  "short_name": "LampreaTalk",
+  "description": "Walkie talkie en tiempo real",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#1A73E8",
+  "icons": []
+}
