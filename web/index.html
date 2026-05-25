@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#121212">
+<link rel="manifest" href="/manifest.json">
+<title>Lamprea Talkies</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#121212;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px;min-height:100dvh;display:flex;flex-direction:column;align-items:center}
+h1{font-size:26px;margin-bottom:4px;text-align:center}
+#status{font-size:13px;color:#9AA0A6;margin-bottom:20px;text-align:center}
+.input-group{width:100%;max-width:400px;margin-bottom:10px}
+.input-group label{font-size:13px;color:#9AA0A6;display:block;margin-bottom:4px}
+.input-group input,.input-group select{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #333;background:#1E1E1E;color:#fff;font-size:15px;outline:none}
+.input-group select option{background:#1E1E1E;color:#fff}
+.input-row{display:flex;gap:8px;align-items:center;width:100%;max-width:400px}
+.input-row .input-group{flex:1;margin-bottom:0}
+.btn-join{width:100%;max-width:400px;padding:12px;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;color:#fff;margin:12px 0;transition:background .2s}
+.btn-join.blue{background:#1A73E8}
+.btn-join.green{background:#34A853}
+.btn-ptt{width:200px;height:200px;border-radius:50%;border:none;font-size:17px;font-weight:700;color:#fff;cursor:pointer;margin:12px 0;transition:all .15s;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none}
+.btn-ptt.idle{background:#1A73E8}
+.btn-ptt.active{background:#34A853}
+.btn-ptt.transmitting{background:#EA4335}
+.hands-free-row{display:flex;align-items:center;gap:8px;margin:8px 0;color:#9AA0A6;font-size:14px}
+.switch{position:relative;width:44px;height:24px;background:#333;border-radius:12px;cursor:pointer;transition:background .2s;flex-shrink:0}
+.switch.on{background:#34A853}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch.on::after{transform:translateX(20px)}
+#users{width:100%;max-width:400px;flex:1;overflow-y:auto;margin-top:12px}
+.user-item{display:flex;justify-content:space-between;padding:8px 12px;background:#1E1E1E;border-radius:8px;margin-bottom:4px}
+.user-item .name{color:#fff}
+.user-item .status{color:#34A853;font-size:13px}
+.btn-manage{background:none;border:none;color:#9AA0A6;font-size:20px;cursor:pointer;padding:4px 8px}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal{background:#1E1E1E;border-radius:12px;padding:20px;width:90%;max-width:340px;max-height:80vh;overflow-y:auto}
+.modal h3{margin-bottom:12px}
+.modal .channel-item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #333}
+.modal .channel-item label{flex:1;color:#fff}
+.modal input[type=checkbox]{width:18px;height:18px}
+.modal-btns{display:flex;gap:8px;margin-top:16px}
+.modal-btns button{flex:1;padding:10px;border:none;border-radius:8px;font-size:14px;cursor:pointer;color:#fff}
+.modal-btns .danger{background:#EA4335}
+.modal-btns .primary{background:#1A73E8}
+.modal-btns .cancel{background:#5F6368}
+.add-channel-btn{width:100%;padding:10px;border:1px dashed #5F6368;border-radius:8px;background:transparent;color:#9AA0A6;font-size:14px;cursor:pointer;margin-top:12px}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;z-index:200;opacity:0;transition:opacity .3s}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<h1>Lamprea Talkies</h1>
+<div id="status">Desconectado</div>
+
+<div class="input-group">
+<label>Nombre</label>
+<input id="username" type="text" placeholder="Tu nombre" value="">
+</div>
+
+<div class="input-row">
+<div class="input-group">
+<label>Canal</label>
+<select id="channelSelect"></select>
+</div>
+<button class="btn-manage" onclick="showManage()" title="Gestionar canales">⚙</button>
+</div>
+
+<button class="btn-join blue" id="btnJoin" onclick="toggleJoin()">Unirse al Canal</button>
+
+<button class="btn-ptt idle" id="btnPTT">Mantener para hablar</button>
+
+<div class="hands-free-row">
+<div class="switch" id="switchHF" onclick="toggleHandsFree()"></div>
+<span>Manos libres</span>
+</div>
+
+<div id="users"></div>
+
+<div class="modal-overlay" id="modalManage">
+<div class="modal">
+<h3>Gestionar Canales</h3>
+<div id="channelList"></div>
+<button class="add-channel-btn" onclick="addChannel()">+ Agregar Canal</button>
+<div class="modal-btns">
+<button class="danger" onclick="deleteSelected()">Eliminar</button>
+<button class="cancel" onclick="closeManage()">Cerrar</button>
+</div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+let ws = null;
+let connected = false;
+let joined = false;
+let transmitting = false;
+let handsFree = false;
+let currentChannel = 'general';
+let channels = ['general'];
+let audioCtx = null;
+let sourceNode = null;
+let processorNode = null;
+let stream = null;
+let audioSeq = 0;
+let pttDown = false;
+
+const $ = id => document.getElementById(id);
+const statusEl = $('status');
+const btnJoin = $('btnJoin');
+const btnPTT = $('btnPTT');
+const channelSelect = $('channelSelect');
+const usernameInput = $('username');
+const usersEl = $('users');
+const toastEl = $('toast');
+
+const savedChannels = localStorage.getItem('channels');
+if (savedChannels) {
+channels = JSON.parse(savedChannels);
+}
+
+let toastTimeout;
+
+function showToast(msg) {
+toastEl.textContent = msg;
+toastEl.classList.add('show');
+clearTimeout(toastTimeout);
+toastTimeout = setTimeout(() => toastEl.classList.remove('show'), 2500);
+}
+
+function renderChannels() {
+channelSelect.innerHTML = '';
+channels.forEach(c => {
+const opt = document.createElement('option');
+opt.value = c;
+opt.textContent = c;
+channelSelect.appendChild(opt);
+});
+if (channels.includes(currentChannel)) channelSelect.value = currentChannel;
+else channelSelect.value = channels[0];
+currentChannel = channelSelect.value;
+}
+
+function saveChannels() {
+localStorage.setItem('channels', JSON.stringify(channels));
+}
+
+renderChannels();
+
+channelSelect.addEventListener('change', () => {
+currentChannel = channelSelect.value;
+});
+
+function connect() {
+if (ws) ws.close();
+ws = new WebSocket(WS_URL);
+ws.onopen = () => {
+if (joined) sendJoin();
+};
+ws.onmessage = (e) => {
+try {
+const msg = JSON.parse(e.data);
+switch (msg.type) {
+case 'connected':
+connected = true;
+statusEl.textContent = 'Conectado a #' + currentChannel;
+statusEl.style.color = '#34A853';
+btnJoin.textContent = 'Salir del Canal';
+btnJoin.className = 'btn-join green';
+btnPTT.disabled = false;
+break;
+case 'users_update':
+renderUsers(msg.users);
+break;
+case 'audio_start':
+break;
+case 'audio_data':
+playAudio(msg.audio);
+break;
+case 'audio_end':
+break;
+}
+} catch (err) {}
+};
+ws.onclose = () => {
+connected = false;
+if (joined) {
+joined = false;
+statusEl.textContent = 'Desconectado';
+statusEl.style.color = '#9AA0A6';
+btnJoin.textContent = 'Unirse al Canal';
+btnJoin.className = 'btn-join blue';
+btnPTT.disabled = true;
+btnPTT.className = 'btn-ptt idle';
+btnPTT.textContent = 'Mantener para hablar';
+transmitting = false;
+usersEl.innerHTML = '';
+}
+};
+ws.onerror = () => {};
+}
+
+function sendJSON(obj) {
+if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function sendJoin() {
+sendJSON({ type: 'join', channel: currentChannel, username: usernameInput.value.trim() || 'User' });
+}
+
+function toggleJoin() {
+if (joined) {
+sendJSON({ type: 'leave_channel', channel: currentChannel });
+joined = false;
+connected = false;
+statusEl.textContent = 'Desconectado';
+statusEl.style.color = '#9AA0A6';
+btnJoin.textContent = 'Unirse al Canal';
+btnJoin.className = 'btn-join blue';
+btnPTT.disabled = true;
+btnPTT.className = 'btn-ptt idle';
+btnPTT.textContent = 'Mantener para hablar';
+transmitting = false;
+usersEl.innerHTML = '';
+if (ws) ws.close();
+} else {
+currentChannel = channelSelect.value;
+if (!channels.includes(currentChannel)) {
+channels.push(currentChannel);
+saveChannels();
+renderChannels();
+}
+joined = true;
+connect();
+}
+}
+
+function renderUsers(users) {
+usersEl.innerHTML = '';
+(users || []).forEach(u => {
+const div = document.createElement('div');
+div.className = 'user-item';
+div.innerHTML = `<span class="name">${u.username || 'Unknown'}</span><span class="status">Online</span>`;
+usersEl.appendChild(div);
+});
+}
+
+async function startPTT() {
+if (transmitting || !joined) return;
+transmitting = true;
+audioSeq = 0;
+
+try {
+audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+sourceNode = audioCtx.createMediaStreamSource(stream);
+
+const sampleRate = audioCtx.sampleRate;
+const targetRate = 16000;
+const bufferSize = 4096;
+
+processorNode = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+sourceNode.connect(processorNode);
+processorNode.connect(audioCtx.destination);
+
+sendJSON({ type: 'audio_start', channel: currentChannel });
+btnPTT.className = 'btn-ptt transmitting';
+btnPTT.textContent = 'Transmitiendo...';
+
+processorNode.onaudioprocess = (event) => {
+if (!transmitting) return;
+const input = event.inputBuffer.getChannelData(0);
+let samples = input;
+
+if (sampleRate !== targetRate) {
+const ratio = targetRate / sampleRate;
+const newLen = Math.floor(samples.length * ratio);
+const resampled = new Float32Array(newLen);
+for (let i = 0; i < newLen; i++) {
+const pos = i / ratio;
+const idx = Math.floor(pos);
+const frac = pos - idx;
+resampled[i] = idx + 1 < samples.length
+? samples[idx] * (1 - frac) + samples[idx + 1] * frac
+: samples[idx];
+}
+samples = resampled;
+}
+
+const pcm = new Int16Array(samples.length);
+for (let i = 0; i < samples.length; i++) {
+const s = Math.max(-1, Math.min(1, samples[i]));
+pcm[i] = s < 0 ? s * 32768 : s * 32767;
+}
+
+const bytes = new Uint8Array(pcm.buffer);
+let binary = '';
+for (let i = 0; i < bytes.length; i++) {
+binary += String.fromCharCode(bytes[i]);
+}
+const base64 = btoa(binary);
+
+sendJSON({ type: 'audio_data', channel: currentChannel, audio: base64, seq: audioSeq++ });
+};
+} catch (err) {
+showToast('Error al acceder al micrófono: ' + err.message);
+transmitting = false;
+}
+}
+
+function stopPTT() {
+if (!transmitting) return;
+transmitting = false;
+
+if (processorNode) {
+try { processorNode.disconnect(); } catch(e) {}
+processorNode = null;
+}
+if (sourceNode) {
+try { sourceNode.disconnect(); } catch(e) {}
+sourceNode = null;
+}
+if (stream) {
+stream.getTracks().forEach(t => t.stop());
+stream = null;
+}
+if (audioCtx) {
+audioCtx.close().catch(() => {});
+audioCtx = null;
+}
+
+sendJSON({ type: 'audio_end', channel: currentChannel });
+btnPTT.className = handsFree ? 'btn-ptt idle' : 'btn-ptt idle';
+btnPTT.textContent = handsFree ? 'Tocar para hablar' : 'Mantener para hablar';
+}
+
+btnPTT.addEventListener('pointerdown', (e) => {
+e.preventDefault();
+if (!joined || !connected) return;
+if (handsFree) {
+if (transmitting) stopPTT();
+else startPTT();
+} else {
+pttDown = true;
+startPTT();
+}
+});
+
+btnPTT.addEventListener('pointerup', (e) => {
+e.preventDefault();
+if (!handsFree && pttDown) {
+pttDown = false;
+stopPTT();
+}
+});
+
+btnPTT.addEventListener('pointerleave', (e) => {
+if (!handsFree && pttDown) {
+pttDown = false;
+stopPTT();
+}
+});
+
+function toggleHandsFree() {
+handsFree = !handsFree;
+$('switchHF').classList.toggle('on', handsFree);
+if (handsFree && !transmitting) {
+btnPTT.textContent = 'Tocar para hablar';
+btnPTT.className = 'btn-ptt idle';
+} else if (!handsFree && !transmitting) {
+btnPTT.textContent = 'Mantener para hablar';
+btnPTT.className = 'btn-ptt idle';
+}
+}
+
+let audioQueue = [];
+let isPlaying = false;
+
+function playAudio(base64) {
+audioQueue.push(base64);
+if (!isPlaying) processAudioQueue();
+}
+
+function processAudioQueue() {
+if (audioQueue.length === 0) { isPlaying = false; return; }
+isPlaying = true;
+const base64 = audioQueue.shift();
+
+try {
+const binary = atob(base64);
+const bytes = new Uint8Array(binary.length);
+for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+const pcm = new Int16Array(bytes.buffer);
+const float32 = new Float32Array(pcm.length);
+for (let i = 0; i < pcm.length; i++) float32[i] = pcm[i] / 32768;
+
+const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, float32.length, 16000);
+const buffer = ctx.createBuffer(1, float32.length, 16000);
+buffer.getChannelData(0).set(float32);
+const src = ctx.createBufferSource();
+src.buffer = buffer;
+src.connect(ctx.destination);
+ctx.startRendering().then(rendered => {
+const playCtx = new (window.AudioContext || window.webkitAudioContext)();
+const buf = playCtx.createBuffer(1, rendered.length, 16000);
+buf.getChannelData(0).set(rendered.getChannelData(0));
+const s = playCtx.createBufferSource();
+s.buffer = buf;
+s.connect(playCtx.destination);
+s.onended = () => { playCtx.close(); processAudioQueue(); };
+s.start();
+}).catch(() => processAudioQueue());
+} catch (e) {
+processAudioQueue();
+}
+}
+
+function showManage() {
+$('channelList').innerHTML = '';
+channels.forEach((c, i) => {
+const div = document.createElement('div');
+div.className = 'channel-item';
+const cb = document.createElement('input');
+cb.type = 'checkbox';
+cb.checked = true;
+cb.dataset.index = i;
+const label = document.createElement('label');
+label.textContent = c;
+div.appendChild(cb);
+div.appendChild(label);
+$('channelList').appendChild(div);
+});
+$('modalManage').classList.add('show');
+}
+
+function closeManage() {
+$('modalManage').classList.remove('show');
+renderChannels();
+}
+
+function deleteSelected() {
+const checks = $('channelList').querySelectorAll('input[type=checkbox]');
+const toRemove = [];
+checks.forEach(cb => {
+if (!cb.checked) {
+toRemove.push(channels[parseInt(cb.dataset.index)]);
+}
+});
+if (toRemove.includes('general')) {
+showToast('No puedes eliminar el canal general');
+toRemove.splice(toRemove.indexOf('general'), 1);
+}
+channels = channels.filter(c => !toRemove.includes(c));
+if (channels.length === 0) channels = ['general'];
+saveChannels();
+closeManage();
+}
+
+function addChannel() {
+const name = prompt('Nombre del nuevo canal:');
+if (name && name.trim() && !channels.includes(name.trim())) {
+channels.push(name.trim());
+saveChannels();
+renderChannels();
+channelSelect.value = name.trim();
+currentChannel = name.trim();
+} else if (name && channels.includes(name.trim())) {
+showToast('El canal ya existe');
+}
+closeManage();
+}
+
+btnPTT.disabled = true;
+</script>
+</body>
+</html>
+Add web app
